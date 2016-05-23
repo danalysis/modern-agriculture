@@ -64,6 +64,7 @@ x <- c(1:length(data$Time))
 plot(x, data$Tank.Level, col="blue")
 points(x, data$Conductivity, col="red")
 
+smoothScatter(x, data$Tank.Level, main="Scatterplot Colored by Smoothed Densities")
 ### 3. focus on the middle section data ###
 
 lo <- 10603
@@ -83,11 +84,11 @@ LED.Intensity <- mydata$LED.Intensity[lo:hi]
 
 smpl <- data.frame(ID, Time, Water.Temperature, Air.Humidity, Temperature, Tank.Level, Conductivity, Natural.Light, LED.Status, LED.Intensity)
 
-# calculate water level
+# a. calculate water level
 heightBox <- 17
 smpl$Tank.Level <- heightBox - smpl$Tank.Level
 
-# delete out value
+# b. delete out value
 repeat {
   outvalue <- boxplot.stats(smpl$Tank.Level)$out
   smpl$Tank.Level[smpl$Tank.Level %in% outvalue ] <- NA
@@ -102,10 +103,31 @@ repeat {
   if (length(outvalue) == 0) break
 }
 
-# remove zero values
+repeat {
+  outvalue <- boxplot.stats(smpl$Air.Humidity)$out
+  smpl$Air.Humidity[smpl$Air.Humidity %in% outvalue ] <- NA
+  
+  if (length(outvalue) == 0) break
+}
+
+repeat {
+  outvalue <- boxplot.stats(smpl$Temperature)$out
+  smpl$Temperature[smpl$Temperature %in% outvalue ] <- NA
+  
+  if (length(outvalue) == 0) break
+}
+
+repeat {
+  outvalue <- boxplot.stats(smpl$Water.Temperature)$out
+  smpl$Water.Temperature[smpl$Water.Temperature %in% outvalue ] <- NA
+  
+  if (length(outvalue) == 0) break
+}
+
+# c. remove zero values
 smpl$Conductivity[smpl$Conductivity == 0] <- NA
 
-# scale Tank Level
+# d. scale Tank Level
 smpl$Water.Temperature <- scale(smpl$Water.Temperature)
 smpl$Air.Humidity <- scale(smpl$Air.Humidity)
 smpl$Temperature <- scale(smpl$Temperature)
@@ -113,33 +135,60 @@ smpl$Tank.Level <- scale(smpl$Tank.Level)
 smpl$Conductivity <- scale(smpl$Conductivity)
 smpl$Natural.Light <- scale(smpl$Natural.Light)
 
+
+smplcor <- data.frame(smpl$Water.Temperature, smpl$Air.Humidity, smpl$Temperature, smpl$Tank.Level, smpl$Conductivity)
+cor(smplcor, use="complete.obs")
+cor.test(smpl$Tank.Level, smpl$Conductivity, use="complete.obs") # Tank.Level 和 Conductivity显著相关
+cor.test(smpl$Air.Humidity, smpl$Conductivity) # Air.Humidity 和 Conductivity显著相关
+cor.test(smpl$Air.Humidity, smpl$Temperature) # Air.Humidity 和 Tank.Level显著相关
+library(psych)
+corr.test(smplcor, use="complete")
+
 # plot
 library(TTR)
 par(mfrow=c(1,1))
-plot(c(1:length(smpl$Tank.Level)), smpl$Tank.Level, col="blue")
+plot(smpl$Temperature, smpl$Air.Humidity)
+plot(smpl$Air.Humidity, smpl$Conductivity)
+plot(c(1:length(smpl$Tank.Level)), smpl$Tank.Level, col="blue" , xlab = "Minute", ylab = "Value")
 points(c(1:length(smpl$Conductivity)), smpl$Conductivity, col="red")
 #abline(lm(smpl$Tank.Level ~ c(1:length(smpl$Tank.Level))))
 #abline(lm(smpl$Conductivity ~ c(1:length(smpl$Conductivity))))
 
-# handle miss value
+# I. handle miss value
 # 1. show stat of missing value
 head(smpl)
-mode(smpl$LED.Intensity)
 library(mice)
 md.pattern(smpl)
 library(VIM)
-aggr(sleep, prop=FALSE, numbers=TRUE)
 aggr(smpl, prop=FALSE, numbers=TRUE)
 
 # 2. MI
-imp <- mice(smpl, seed=1234)
-pooled <- pool(imp)
+aggr(smplcor, prop=FALSE, numbers=TRUE)
+imp <- mice(smplcor, seed=1234)
+fit <- with(imp, lm(smplcor$smpl.Conductivity ~ smplcor$smpl.Air.Humidity))
+pooled <- pool(fit)
 summary(pooled)
 
-# filter
-#smpl$Tank.Level.SMA <- SMA(smpl$Tank.Level, 1500, na.rm = TRUE)
-#points(c(1:length(smpl$Tank.Level)), smpl$Tank.Level.SMA, col="green")
+smplcor <- complete(imp, action=3)
 
+# 3. 散点矩阵图
+pairs(~smplcor$smpl.Tank.Level+smplcor$smpl.Conductivity+smplcor$smpl.Water.Temperature+smplcor$smpl.Temperature+smplcor$smpl.Air.Humidity,
+      main="Basic Scatter Plot Matrix")
+
+library(car)
+scatterplotMatrix(~smplcor$smpl.Tank.Level+smplcor$smpl.Conductivity+smplcor$smpl.Water.Temperature+smplcor$smpl.Temperature+smplcor$smpl.Air.Humidity,
+                  data=smplcor, lty.smooth=2, main="Scatter Plot Matrix via car Package")
+
+
+# II. filter
+par(mfrow=c(1,1))
+smplcor$Tank.Level.SMA <- SMA(smplcor$smpl.Tank.Level, 1500)
+plot(c(1:length(smplcor$Tank.Level)), smplcor$smpl.Tank.Level, col="blue")
+points(c(1:length(smplcor$Tank.Level)), smplcor$Tank.Level.SMA, col="green")
+
+smoothScatter(c(1:length(smplcor$Tank.Level)), 
+              smplcor$smpl.Tank.Level,
+              main="Scatterplot Colored by Smoothed Densities")
 
 # filter
 size <- length(smpl$Tank.Level)
